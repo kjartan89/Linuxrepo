@@ -1,6 +1,10 @@
 #!/bin/bash
 
-# Server:navn NåværendeIP NyIP
+# ----------------------------
+# Statisk IP deploy script
+# ----------------------------
+
+# Server:Hostname NåværendeIP NyIP
 servers=(
   "Tromso-server:10.0.0.25:10.0.0.14"
   "Web-server:10.0.0.26:10.0.0.15"
@@ -17,8 +21,10 @@ DNS2="8.8.4.4"
 for entry in "${servers[@]}"; do
   IFS=":" read -r hostname oldip newip <<< "$entry"
 
+  echo "==============================="
   echo "Oppdaterer $hostname (fra $oldip til $newip)..."
 
+  # Lag netplan YAML midlertidig
   cat > netplan-temp.yaml <<EOF
 network:
   version: 2
@@ -35,12 +41,23 @@ network:
           - $DNS2
 EOF
 
+  # Kopier fil til server
+  echo "Sender netplan-fil til $hostname ($oldip)..."
   scp netplan-temp.yaml $USER@$oldip:/tmp/netplan.yaml
 
-  ssh $USER@$oldip "sudo mv /tmp/netplan.yaml /etc/netplan/01-netcfg.yaml && sudo netplan apply" < /dev/null
+  # Kjør remote: backup + apply
+  echo "Bruker sudo på $hostname for å oppdatere netplan..."
+  ssh $USER@$oldip <<EOF
+sudo cp /etc/netplan/01-netcfg.yaml /etc/netplan/01-netcfg.yaml.bak
+sudo mv /tmp/netplan.yaml /etc/netplan/01-netcfg.yaml
+sudo netplan apply
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Netplan applied for $hostname ($newip)" >> ~/ip-change.log
+EOF
 
   echo "→ Fullført for $hostname. Ny IP: $newip"
 done
 
+# Fjern midlertidig fil
 rm netplan-temp.yaml
+echo "==============================="
 echo "Alle serverne er oppdatert!"
